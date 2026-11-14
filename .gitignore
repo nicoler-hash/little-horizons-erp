@@ -1,0 +1,6 @@
+target/
+.idea/
+*.iml
+invoices/*.pdf
+error_log.txt
+error_log.txt.lck
