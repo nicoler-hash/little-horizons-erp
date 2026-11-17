@@ -4,3 +4,7 @@ target/
 invoices/*.pdf
 error_log.txt
 error_log.txt.lck
+
+# Configuración con credenciales
+src/main/resources/db.properties
+src/main/resources/school.properties
