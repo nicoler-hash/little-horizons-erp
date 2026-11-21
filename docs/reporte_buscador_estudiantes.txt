@@ -1,0 +1,223 @@
+===============================================================================
+        REPORTE DEL PROYECTO: BUSCADOR AVANZADO DE ESTUDIANTES (PROTOTIPO)
+        Colegio Internacional "Little Horizons" - ERP de gestión académica
+===============================================================================
+
+Fecha del reporte : 20 de noviembre de 2026
+Proyecto          : erp-little-horizons
+Tecnologías       : Java 17, MySQL 8, JDBC, Stream API, arquitectura MVC,
+                    interfaz de consola
+Base de datos     : erp_little_horizons (localhost:3306)
+
+
+-------------------------------------------------------------------------------
+1. OBJETIVO
+-------------------------------------------------------------------------------
+Prototipo que busca estudiantes por filtros. Para esta entrega solo funciona
+el filtro por GRADO ACADÉMICO. Los filtros 2 a 5 aparecen en el menú, pero
+muestran el mensaje "Esta funcionalidad aún no ha sido implementada".
+
+El filtrado final por grado se hace con Java Stream API (stream, filter con
+lambda y collect), como exige el enunciado. El SQL NO filtra por grado.
+
+
+-------------------------------------------------------------------------------
+2. ESTRUCTURA DEL PROYECTO (paquete "test")
+-------------------------------------------------------------------------------
+src/main/java/
+|-- com/littlehorizons/erp/...        (ERP principal, no se modificó)
+|   `-- util/DatabaseConnection.java  (conexión JDBC reutilizada)
+`-- test/
+    |-- modelo/
+    |   `-- Estudiante.java
+    |-- vista/
+    |   `-- BuscadorEstudiantesMain.java      (contiene el main)
+    `-- controlador/
+        `-- BuscadorEstudiantesController.java
+
+docs/
+|-- database.sql                       (esquema y datos base del ERP)
+`-- datos_prueba_buscador_2025.sql     (datos de prueba del buscador)
+
+Nota: el paquete test va en src/main/java, no en src/test/java (esa carpeta
+es la de pruebas de Maven y no es lo mismo).
+
+
+-------------------------------------------------------------------------------
+3. RESPONSABILIDAD DE CADA CLASE (MVC)
+-------------------------------------------------------------------------------
+MODELO - Estudiante
+  - DTO que reúne datos de tres tablas: estudiantes, matriculas y grados.
+  - getNombreCompleto(): une primer nombre, segundo nombre, primer apellido
+    y segundo apellido, descartando los nulos o vacíos. Así no quedan
+    espacios dobles cuando un segundo nombre o apellido es NULL.
+  - getDocumento(): devuelve tipo y número de documento (ej. "TI 1023456789").
+
+VISTA - BuscadorEstudiantesMain
+  - Contiene el main(); se ejecuta sin login ni menú del ERP.
+  - Muestra el menú principal y el submenú de grados.
+  - Valida la entrada: texto, 0 (cancelar), número fuera de 1-12.
+  - Muestra los resultados o el mensaje de "no se encontraron".
+  - No contiene SQL.
+
+CONTROLADOR - BuscadorEstudiantesController
+  - consultarEstudiantesActivos(): ejecuta la consulta JDBC.
+  - filtrarPorGrado(): aplica el filtro con Stream API.
+  - buscarPorGrado(): consulta y luego filtra.
+  - No imprime en pantalla.
+
+
+-------------------------------------------------------------------------------
+4. CONSULTA SQL
+-------------------------------------------------------------------------------
+SELECT e.id_estudiante, e.tipo_documento, e.numero_documento,
+       e.primer_nombre, e.segundo_nombre, e.primer_apellido, e.segundo_apellido,
+       g.id_grado, g.nombre_grado
+FROM estudiantes e
+JOIN matriculas m ON m.id_estudiante = e.id_estudiante
+JOIN grados g ON g.id_grado = m.id_grado
+WHERE m.anio_academico = ? AND m.estado_matricula = ?
+ORDER BY g.nivel_numerico, e.id_estudiante
+
+Explicación:
+  - Primer JOIN: relaciona cada estudiante con su matrícula.
+  - Segundo JOIN: relaciona la matrícula con su grado.
+  - WHERE: deja solo matrículas del año 2025 con estado 'Activa'.
+  - Los signos ? son parámetros de un PreparedStatement (evita inyección SQL).
+  - Los nombres de columnas se tomaron del esquema real de docs/database.sql.
+
+Observación: el enunciado menciona "año_academico", pero la columna real de
+la base de datos es "anio_academico" (sin ñ). El código usa el nombre real.
+
+
+-------------------------------------------------------------------------------
+5. FILTRO CON STREAM API
+-------------------------------------------------------------------------------
+return estudiantes.stream()
+        .filter(estudiante -> estudiante.getNombreGrado() != null
+                && estudiante.getNombreGrado().equalsIgnoreCase(nombreGrado))
+        .collect(Collectors.toList());
+
+  - stream()                      convierte la lista en un flujo de datos.
+  - filter(lambda)                conserva solo los del grado elegido.
+  - collect(Collectors.toList())  reúne el resultado en una nueva lista.
+
+
+-------------------------------------------------------------------------------
+6. MANEJO DE CASOS ESPECIALES
+-------------------------------------------------------------------------------
+  - Sin matrícula activa en 2025 ........ el WHERE los excluye.
+  - Grado sin estudiantes ............... mensaje "No se encontraron...".
+  - Segundo nombre/apellido NULL ........ getNombreCompleto() evita espacios dobles.
+  - Datos incompletos ................... se descartan partes nulas o vacías.
+  - Error de conexión MySQL ............. mensaje comprensible y regreso al menú.
+  - Recursos JDBC ....................... try-with-resources cierra Connection,
+                                          PreparedStatement y ResultSet.
+  - Entradas inválidas .................. el programa no termina; permite reintentar.
+
+
+-------------------------------------------------------------------------------
+7. DATOS DE PRUEBA (docs/datos_prueba_buscador_2025.sql)
+-------------------------------------------------------------------------------
+Los datos base del ERP son del año 2026; el examen exige matrículas activas
+de 2025, por eso se agregó este script (se puede ejecutar varias veces).
+
+Documento    Estudiante                    Matrícula 2025        ¿Aparece?
+-----------  ----------------------------  --------------------  -------------
+1023456789   Juan Carlos Pérez González    Décimo / Activa       Sí (Décimo)
+1023456790   María Elena López Ramírez     Décimo / Activa       Sí (Décimo)
+1023456791   Carlos Gómez Silva            Décimo / Activa       Sí (Décimo)
+1023456792   Andrés Felipe Rojas Mejía     Décimo / Retirada     No
+1023456793   Valentina Cárdenas            Noveno / Activa       Sí (Noveno)
+
+Once no tiene estudiantes activos en 2025 (prueba del mensaje de ausencia).
+
+
+-------------------------------------------------------------------------------
+8. RESULTADOS DE VERIFICACIÓN
+-------------------------------------------------------------------------------
+Verificado en DBeaver (consulta de verificación del script):
+  [OK] 4 filas: Noveno (ID 41), Décimo (IDs 39, 38 y 37).
+  [OK] Andrés Rojas (ID 40) no aparece: su matrícula está "Retirada".
+
+Verificado en IntelliJ:
+  [OK] El proyecto se conecta a MySQL ("Conexión a la base de datos exitosa").
+  [OK] BuscadorEstudiantesMain se ejecuta de forma independiente y muestra
+       el menú, la selección de grado y el formato de resultados.
+  [OK] Sin datos 2025, Décimo mostró el mensaje "No se encontraron
+       estudiantes..." con el formato correcto.
+
+Pendiente de confirmar tras cargar los datos 2025 (marcar al probar):
+  [ ] Opción 1 -> 11 (Décimo): 3 estudiantes.
+  [ ] Opción 1 -> 10 (Noveno): 1 estudiante, sin espacios dobles.
+  [ ] Opción 1 -> 12 (Once): mensaje de ausencia de resultados.
+  [ ] Opción 1 -> abc: "Error: Debe ingresar un número válido."
+  [ ] Opción 1 -> 15: "Error: Debe seleccionar un número entre 1 y 12."
+  [ ] Opción 1 -> 0: "Operación cancelada."
+  [ ] Opciones 2, 3, 4, 5: mensaje de "no implementada" y regreso al menú.
+  [ ] Opción 0: "Saliendo del buscador... Gracias por usar el sistema."
+
+
+-------------------------------------------------------------------------------
+9. CÓMO EJECUTAR
+-------------------------------------------------------------------------------
+1. Ejecutar docs/database.sql en MySQL (una sola vez).
+2. Ejecutar COMPLETO docs/datos_prueba_buscador_2025.sql (Alt+X en DBeaver).
+3. Revisar src/main/resources/db.properties (usuario y contraseña).
+4. En IntelliJ: clic derecho sobre BuscadorEstudiantesMain -> Run.
+   (No usar el botón de relanzar si la última ejecución fue Main del ERP.)
+   Por terminal:
+   mvn compile exec:java -Dexec.mainClass=test.vista.BuscadorEstudiantesMain
+
+
+-------------------------------------------------------------------------------
+10. PREGUNTAS PROBABLES DEL INSTRUCTOR
+-------------------------------------------------------------------------------
+P: ¿Dónde está el Stream API?
+R: En filtrarPorGrado() del controlador: stream(), filter() con lambda y
+   collect(Collectors.toList()).
+
+P: ¿Por qué no filtras el grado en el SQL?
+R: Porque el enunciado exige hacerlo con Stream API. El SQL solo trae los
+   estudiantes con matrícula activa de 2025.
+
+P: ¿Qué es un DTO?
+R: Un objeto que transporta datos combinados de varias tablas. Estudiante
+   junta datos de estudiantes, matriculas y grados.
+
+P: ¿Cómo evitas espacios dobles en el nombre?
+R: Con un Stream que descarta las partes nulas o vacías antes de unirlas
+   con Collectors.joining(" ").
+
+P: ¿Qué es PreparedStatement y por qué se usa?
+R: Una consulta con parámetros (?). Evita la inyección SQL.
+
+P: ¿Cómo se cierran los recursos JDBC?
+R: Con try-with-resources: Connection, PreparedStatement y ResultSet se
+   cierran solos aunque ocurra una excepción.
+
+P: ¿Dónde se ve la separación MVC?
+R: El modelo no imprime, la vista no tiene SQL y el controlador no usa
+   System.out.
+
+P: ¿Por qué reutilizas DatabaseConnection?
+R: Porque el enunciado pide reutilizar la conexión existente en lugar de
+   duplicar el código.
+
+
+-------------------------------------------------------------------------------
+11. ERRORES FRECUENTES Y SOLUCIÓN
+-------------------------------------------------------------------------------
+- Access denied for user ......... falta la contraseña en db.properties.
+- Unknown database ............... no se ejecutó database.sql.
+- Unknown column 'anio_academico'  se está usando otra base con la ñ.
+- Resultados vacíos .............. no se ejecutó el script de datos 2025
+                                   (usar Alt+X, no Ctrl+Enter).
+- Sale el menú del ERP ........... se ejecutó Main; ejecutar la clase
+                                   BuscadorEstudiantesMain.
+- ClassNotFoundException test.vista...  la carpeta test quedó fuera de
+                                   src/main/java.
+
+===============================================================================
+                              FIN DEL REPORTE
+===============================================================================
